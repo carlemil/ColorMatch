@@ -33,6 +33,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import se.kjellstrand.colormatch.ui.theme.ColorMatchTheme
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,8 +101,11 @@ class MainActivity : ComponentActivity() {
 
                     val randomColors = remember(seed) { (1..4).map { generateRandomColor() } }
                     val allColors = baseColors + randomColors
-                    val selectedColorFromList = remember(seed) { allColors.random() }
-                    val completelyRandomColor = remember(seed) { generateRandomColor() }
+                    val colorPickedFromImage = remember(seed) { generateRandomColor() }
+
+                    val selectedColorFromList = remember(seed, colorPickedFromImage) {
+                        findClosestColor(colorPickedFromImage, allColors)
+                    }
 
                     Column(
                         modifier = Modifier
@@ -114,7 +121,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             ColorBlob(color = selectedColorFromList)
-                            ColorBlob(color = completelyRandomColor)
+                            ColorBlob(color = colorPickedFromImage)
                         }
 
                         AsyncImage(
@@ -148,4 +155,26 @@ class MainActivity : ComponentActivity() {
         alpha = 1f
     )
 
+    fun findClosestColor(target: Color, options: List<Color>): Color {
+        val targetOut = DoubleArray(3)
+        ColorUtils.colorToLAB(target.toArgb(), targetOut)
+
+        return options.minBy { option ->
+            val optionOut = DoubleArray(3)
+            ColorUtils.colorToLAB(option.toArgb(), optionOut)
+
+            // Euclidean distance in LAB space:
+            // sqrt((L1-L2)^2 + (a1-a2)^2 + (b1-b2)^2)
+            calculateEuclideanDistance(targetOut, optionOut)
+        }
+    }
+
+    fun calculateEuclideanDistance(c1: DoubleArray, c2: DoubleArray): Double {
+        return sqrt(
+            (c1[0] - c2[0]).pow(2.0) +
+                    (c1[1] - c2[1]).pow(2.0) +
+                    (c1[2] - c2[2]).pow(2.0)
+        )
+    }
+    
 }
