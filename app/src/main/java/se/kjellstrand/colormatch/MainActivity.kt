@@ -34,9 +34,13 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import se.kjellstrand.colormatch.ui.theme.ColorMatchTheme
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
 import kotlin.math.pow
 import kotlin.math.sqrt
+import androidx.palette.graphics.Palette
+import androidx.core.graphics.drawable.toBitmap
+import coil.request.ImageRequest
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,9 +103,9 @@ class MainActivity : ComponentActivity() {
             ) {
                 items(imageSeeds) { seed ->
 
-                    val randomColors = remember(seed) { (1..4).map { generateRandomColor() } }
+                    val randomColors = remember(seed) { (1..8).map { generateRandomColor() } }
                     val allColors = baseColors + randomColors
-                    val colorPickedFromImage = remember(seed) { generateRandomColor() }
+                    var colorPickedFromImage by remember(seed) { mutableStateOf(Color.Gray) }
 
                     val selectedColorFromList = remember(seed, colorPickedFromImage) {
                         findClosestColor(colorPickedFromImage, allColors)
@@ -125,11 +129,26 @@ class MainActivity : ComponentActivity() {
                         }
 
                         AsyncImage(
-                            model = "https://picsum.photos/seed/$seed/400/300",
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data("https://picsum.photos/seed/$seed/400/300")
+                                .allowHardware(false)
+                                .build(),
                             contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
+                            onSuccess = { state ->
+                                val bitmap = state.result.drawable.toBitmap()
+                                Palette.from(bitmap).generate { palette ->
+                                    val bestSwatch = palette?.vibrantSwatch
+                                        ?: palette?.lightVibrantSwatch
+                                        ?: palette?.darkVibrantSwatch
+                                        ?: palette?.mutedSwatch
+                                        ?: palette?.dominantSwatch
+
+                                    bestSwatch?.rgb?.let { rgb ->
+                                        colorPickedFromImage = Color(rgb)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(200.dp),
                             contentScale = ContentScale.Crop
                         )
                     }
@@ -143,7 +162,7 @@ class MainActivity : ComponentActivity() {
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .height(10.dp)
+                .height(20.dp)
                 .background(color)
         )
     }
