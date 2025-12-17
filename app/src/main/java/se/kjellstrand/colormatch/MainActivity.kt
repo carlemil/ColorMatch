@@ -7,10 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -39,12 +42,10 @@ import se.kjellstrand.colormatch.ui.theme.ColorMatchTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val colors = listOf(Color.Red, Color.Blue, Color.Green, Color.Yellow)
         enableEdgeToEdge()
         setContent {
             ColorMatchTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { _ ->
-                    ColorList(colors)
                     ImageList()
                 }
             }
@@ -53,16 +54,15 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun ColorList(colors: List<Color>, modifier: Modifier = Modifier) {
-        LazyRow(
+        Row(
             modifier = modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            items(colors) { color ->
+            colors.forEach { color ->
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
+                        .weight(1f)
+                        .height(20.dp)
                         .background(color)
                 )
             }
@@ -72,8 +72,9 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun ImageList(modifier: Modifier = Modifier) {
-        var imageSeeds by remember { mutableStateOf((1..10).toList()) }
-
+        val imageCount = 5
+        var imageSeeds by remember { mutableStateOf((1..imageCount).toList()) }
+        val baseColors = listOf(Color.Red, Color.Blue, Color.Green, Color.Yellow)
         var isRefreshing by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
 
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
             isRefreshing = isRefreshing,
             onRefresh = {
                 scope.launch {
-                    imageSeeds = (1..10).map { (0..10000).random() }
+                    imageSeeds = (1..imageCount).map { (0..10000).random() }
                 }
             },
             modifier = modifier.fillMaxSize()
@@ -92,17 +93,55 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(imageSeeds) { seed ->
-                    AsyncImage(
-                        model = "https://picsum.photos/seed/$seed/400/300",
-                        contentDescription = null,
+
+                    val randomColors = remember(seed) { (1..4).map { generateRandomColor() } }
+                    val allColors = baseColors + randomColors
+                    val selectedColorFromList = remember(seed) { allColors.random() }
+                    val completelyRandomColor = remember(seed) { generateRandomColor() }
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        ColorList(colors = allColors)
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            ColorBlob(color = selectedColorFromList)
+                            ColorBlob(color = completelyRandomColor)
+                        }
+
+                        AsyncImage(
+                            model = "https://picsum.photos/seed/$seed/400/300",
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
         }
     }
+
+    @Composable
+    fun ColorBlob(color: Color, modifier: Modifier = Modifier) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .background(color)
+        )
+    }
+
+    fun generateRandomColor() = Color(
+        red = (0..255).random() / 255f,
+        green = (0..255).random() / 255f,
+        blue = (0..255).random() / 255f,
+        alpha = 1f
+    )
+
 }
