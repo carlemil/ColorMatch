@@ -10,25 +10,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,7 +29,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -50,7 +41,9 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import se.kjellstrand.colormatch.ui.theme.ColorMatchTheme
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -115,8 +108,6 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(imageSeeds) { seed ->
-
-                    val allColors = baseColors
                     var colorsPickedFromImage by remember(seed) { mutableStateOf(listOf<Color>()) }
 
                     Column(
@@ -124,19 +115,15 @@ class MainActivity : ComponentActivity() {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                     ) {
-                        DrawColorListWithTitle(baseColors, "Available IKEA Colors")
+                        DrawColorListWithTitle(
+                            colors = baseColors,
+                            title = "Available IKEA Colors"
+                        )
 
-                        val bestMatches = remember(colorsPickedFromImage, allColors) {
-                            sortOptionsWithDistances(colorsPickedFromImage, allColors)
-                        }
-
-                        if (!bestMatches.isEmpty()) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                ColorBlob(color = bestMatches.first().first)
-                            }
-                        }
+                        DrawColorListWithTitle(
+                            colors = colorsPickedFromImage,
+                            title = "IKEA colors matching the image"
+                        )
 
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
@@ -147,17 +134,12 @@ class MainActivity : ComponentActivity() {
                             onSuccess = { state ->
                                 val bitmap = state.result.drawable.toBitmap()
                                 Palette.from(bitmap).generate { palette ->
-                                    // Extract a list of distinct swatches
-                                    val swatches = listOfNotNull(
-                                        palette?.vibrantSwatch,
-                                        palette?.lightVibrantSwatch,
-                                        palette?.darkVibrantSwatch,
-                                        palette?.mutedSwatch,
-                                        palette?.lightMutedSwatch,
-                                        palette?.darkMutedSwatch
-                                    ).map { Color(it.rgb) }.distinct()
-
-                                    colorsPickedFromImage = swatches
+                                    palette?.let {
+                                        scope.launch {
+                                            colorsPickedFromImage =
+                                                sortColorsByWeightedProminence(palette, baseColors)
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -165,23 +147,53 @@ class MainActivity : ComponentActivity() {
                                 .height(200.dp),
                             contentScale = ContentScale.Crop
                         )
-
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            colorsPickedFromImage.forEach { color ->
-                                ColorBlob(
-                                    color = color,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
                     }
                 }
             }
         }
     }
 
+    private suspend fun sortColorsByWeightedProminence(
+        palette: Palette,
+        availableColors: List<Color>
+    ): List<Color> = withContext(Dispatchers.Default) {
+
+        val availableLabs = availableColors.map { color ->
+            val lab = DoubleArray(3)
+            ColorUtils.colorToLAB(color.toArgb(), lab)
+            color to lab
+        }
+
+        val colorScores = mutableMapOf<Color, Float>()
+
+        palette.swatches.forEach { swatch ->
+            val hsl = FloatArray(3)
+            ColorUtils.colorToHSL(swatch.rgb, hsl)
+            val saturation = hsl[1] // Range 0.0 to 1.0
+
+            // Determine the "Weight" of this color cluster.
+            // We add a small constant (0.1) so neutrals aren't multiplied by zero.
+            val weight = saturation + 0.1f
+            val weightedPopulation = swatch.population * weight
+
+            val swatchLab = DoubleArray(3)
+            ColorUtils.colorToLAB(swatch.rgb, swatchLab)
+
+            val closestIkeaColor = availableLabs.minBy { (_, lab) ->
+                calculateEuclideanDistance(lab, swatchLab)
+            }.first
+
+            colorScores[closestIkeaColor] =
+                colorScores.getOrDefault(closestIkeaColor, 0f) + weightedPopulation
+        }
+
+        return@withContext colorScores.toList()
+            .sortedByDescending { it.second }
+            .map { it.first }
+    }
+
     @Composable
-    private fun DrawColorListWithTitle(baseColors: List<Color>, title: String) {
+    private fun DrawColorListWithTitle(colors: List<Color>, title: String) {
         Text(
             text = title,
             style = MaterialTheme.typography.labelMedium,
@@ -194,7 +206,7 @@ class MainActivity : ComponentActivity() {
                 .height(24.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            baseColors.forEach { color ->
+            colors.forEach { color ->
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -203,47 +215,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-    }
-
-
-
-    @Composable
-    fun ColorBlob(color: Color, modifier: Modifier = Modifier) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(20.dp)
-                .background(color)
-        )
-    }
-
-    fun sortOptionsWithDistances(
-        targets: List<Color>,
-        options: List<Color>
-    ): List<Pair<Color, Double>> {
-        // 1. Guard Clause to prevent NoSuchElementException
-        if (targets.isEmpty() || options.isEmpty()) return emptyList()
-
-        // 2. Pre-calculate LAB for targets (Optimization)
-        val targetLabs = targets.map {
-            val out = DoubleArray(3)
-            ColorUtils.colorToLAB(it.toArgb(), out)
-            out
-        }
-
-        return options.map { option ->
-            val optionLab = DoubleArray(3)
-            ColorUtils.colorToLAB(option.toArgb(), optionLab)
-
-            // Find the distance to the CLOSEST target
-            val minDistance = targetLabs.minOf { targetLab ->
-                calculateEuclideanDistance(targetLab, optionLab)
-            }
-
-            // Return the Pair instead of just the Color
-            option to minDistance
-        }
-            .sortedBy { it.second } // Sort by distance (ascending)
     }
 
     fun calculateEuclideanDistance(c1: DoubleArray, c2: DoubleArray): Double {
