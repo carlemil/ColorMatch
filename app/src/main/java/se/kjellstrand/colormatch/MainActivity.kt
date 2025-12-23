@@ -4,12 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -30,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -60,7 +60,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -113,7 +112,6 @@ class MainActivity : ComponentActivity() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
                     ) {
                         DrawColorListWithTitle(
                             colors = baseColors,
@@ -124,29 +122,44 @@ class MainActivity : ComponentActivity() {
                             colors = colorsPickedFromImage,
                             title = "IKEA colors matching the image"
                         )
+                        Spacer(Modifier.height(8.dp))
 
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data("https://picsum.photos/seed/$seed/400/300")
-                                .allowHardware(false)
-                                .build(),
-                            contentDescription = null,
-                            onSuccess = { state ->
-                                val bitmap = state.result.drawable.toBitmap()
-                                Palette.from(bitmap).generate { palette ->
-                                    palette?.let {
-                                        scope.launch {
-                                            colorsPickedFromImage =
-                                                sortColorsByWeightedProminence(palette, baseColors)
-                                        }
-                                    }
-                                }
-                            },
+                        val frameColor = colorsPickedFromImage.firstOrNull() ?: Color.Transparent
+
+                        val animatedFrameColor by animateColorAsState(
+                            targetValue = frameColor,
+                            label = "FrameColorAnimation"
+                        )
+
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(200.dp),
-                            contentScale = ContentScale.Crop
-                        )
+                                .background(animatedFrameColor)
+                                .padding(12.dp)
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data("https://picsum.photos/seed/$seed/400/300")
+                                    .allowHardware(false)
+                                    .build(),
+                                contentDescription = null,
+                                onSuccess = { state ->
+                                    val bitmap = state.result.drawable.toBitmap()
+                                    Palette.from(bitmap).generate { palette ->
+                                        palette?.let {
+                                            scope.launch {
+                                                colorsPickedFromImage =
+                                                    sortColorsByWeightedProminence(it, baseColors)
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                 }
             }
