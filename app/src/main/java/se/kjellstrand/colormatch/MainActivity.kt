@@ -115,12 +115,12 @@ class MainActivity : ComponentActivity() {
                     ) {
                         DrawColorListWithTitle(
                             colors = baseColors,
-                            title = "Available IKEA Colors"
+                            title = "Available Colors"
                         )
 
                         DrawColorListWithTitle(
                             colors = colorsPickedFromImage,
-                            title = "IKEA colors matching the image"
+                            title = "Colors matching the image"
                         )
                         Spacer(Modifier.height(8.dp))
 
@@ -192,12 +192,12 @@ class MainActivity : ComponentActivity() {
             val swatchLab = DoubleArray(3)
             ColorUtils.colorToLAB(swatch.rgb, swatchLab)
 
-            val closestIkeaColor = availableLabs.minBy { (_, lab) ->
+            val closestColor = availableLabs.minBy { (_, lab) ->
                 calculateEuclideanDistance(lab, swatchLab)
             }.first
 
-            colorScores[closestIkeaColor] =
-                colorScores.getOrDefault(closestIkeaColor, 0f) + weightedPopulation
+            colorScores[closestColor] =
+                colorScores.getOrDefault(closestColor, 0f) + weightedPopulation
         }
 
         return@withContext colorScores.toList()
